@@ -40,8 +40,30 @@ procinit(void)
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
+      //! KSTAK must hold same physical page
+      p->kstack_pa = (uint64)pa;
   }
   kvminithart();
+}
+
+//! Initialize the proc table for per process kernel table at alloc time.
+void            
+kprocinit(struct proc* p){
+  struct proc *ptraverse;
+  for(ptraverse = proc; ptraverse < &proc[NPROC]; ptraverse++) {
+      kpvmmap(p, ptraverse->kstack, ptraverse->kstack_pa, PGSIZE, PTE_R | PTE_W);
+  }
+}
+
+//! Free the proc table for per process kernel table
+void            
+kprocfree(struct proc* p) {
+  struct proc *ptraverse;
+  pagetable_t kpagetable = p->kpagetable;
+  for(ptraverse = proc; ptraverse < &proc[NPROC]; ptraverse++) {
+      uint64 va = KSTACK((int) (ptraverse - proc));
+      uvmunmap(kpagetable, va, 1, 0);
+  }
 }
 
 // Must be called with interrupts disabled,
@@ -115,6 +137,11 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
+  //! Init Per process kernel page table 
+  kpvminit(p);
+  //! Setup proc table for per process kernel table 
+  kprocinit(p);
+  
   if(p->pagetable == 0){
     freeproc(p);
     release(&p->lock);
@@ -141,7 +168,10 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if(p->kpagetable)
+    proc_freekpagetable(p);
   p->pagetable = 0;
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -193,6 +223,17 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+extern void freewalk(pagetable_t);
+void
+proc_freekpagetable(struct proc *p){
+  // pagetable_t kpagetable = p->kpagetable;
+  // Free kernel memory pages,
+  // then free kernel page table.
+  kpvmfree(p);
+  kprocfree(p);
+  freewalk(p->kpagetable);
 }
 
 // a user program that calls exec("/init")
@@ -453,6 +494,8 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+extern void vmprint(pagetable_t pagetable);
+extern pagetable_t kernel_pagetable;
 void
 scheduler(void)
 {
@@ -473,8 +516,12 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        //! load the process's kernel page table into the core's satp registe
+        // printf("%s switch to process: %d\n", p->pid);
+        kpvminithart(p);
         swtch(&c->context, &p->context);
-
+        //! Use kernel_pagetable when no process is running
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;

@@ -78,5 +78,7 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+  else 
+    printf("%s: low memory\n", __func__);
   return (void*)r;
 }
