@@ -47,6 +47,7 @@ copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
   struct proc *p = myproc();
   char *s = (char *) srcva;
+  printf("%s called", __func__);
   
   stats.ncopyinstr++;   // XXX lock
   for(int i = 0; i < max && srcva + i < p->sz; i++){

@@ -225,7 +225,9 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
-extern void freewalk(pagetable_t);
+extern void 
+freewalk(pagetable_t);
+
 void
 proc_freekpagetable(struct proc *p){
   // pagetable_t kpagetable = p->kpagetable;
@@ -256,12 +258,14 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
+  printf("%s called\n", __func__);
   // allocate one user page and copy init's instructions
   // and data into it.
+  //! Init not only for user page table but also kernel page table 
+  // kuvminit(p, initcode, sizeof(initcode));
   uvminit(p->pagetable, initcode, sizeof(initcode));
+  
   p->sz = PGSIZE;
-
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
   p->trapframe->sp = PGSIZE;  // user stack pointer
@@ -283,12 +287,19 @@ growproc(int n)
   struct proc *p = myproc();
 
   sz = p->sz;
+  //! Don't forget about the above-mentioned PLIC limit
+  if(sz + n >= PLIC) {
+    return -1;
+  }
+
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    //! alloc not only user page table, but also kernel page table
+    if((sz = kuvmalloc(p, sz, sz + n)) == 0) {
       return -1;
     }
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    //! dealloc not only user page table, but also kernel page table
+    sz = kuvmdealloc(p, sz, sz + n);
   }
   p->sz = sz;
   return 0;
@@ -300,16 +311,17 @@ int
 fork(void)
 {
   int i, pid;
-  struct proc *np;
+  struct proc *np;  //! Child Process
   struct proc *p = myproc();
 
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  printf("%s called\n", __func__);
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  //! Copy user memory from parent to child and also kernel page table
+  if(kuvmcopy(p, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -501,7 +513,7 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
