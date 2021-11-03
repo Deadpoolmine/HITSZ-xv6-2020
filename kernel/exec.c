@@ -51,7 +51,7 @@ exec(char *path, char **argv)
     //! malloc for user pagetable and kernel pagetable
     // if((sz1 = kuvmalloc(p, sz, ph.vaddr + ph.memsz)) == 0)
     //   goto bad;
-    if((sz1 = uvmalloc(p->pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
       goto bad;
     sz = sz1;
     if(ph.vaddr % PGSIZE != 0)
@@ -73,7 +73,7 @@ exec(char *path, char **argv)
   //! malloc for user pagetable and kernel pagetable
   // if((sz1 = kuvmalloc(p, sz, sz + 2*PGSIZE)) == 0)
   //   goto bad;
-  if((sz1 = uvmalloc(p->pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
