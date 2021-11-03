@@ -43,10 +43,11 @@ sys_sbrk(void)
 {
   int addr;
   int n;
-  printf("%s called\n", __func__);
+  // printf("%s called\n", __func__);
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
+  // printf("%d\n", myproc()->sz);
   if(growproc(n) < 0)
     return -1;
   return addr;

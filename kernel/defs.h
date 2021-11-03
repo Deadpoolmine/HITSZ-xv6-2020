@@ -91,15 +91,15 @@ void            exit(int);
 int             fork(void);
 int             growproc(int);
 pagetable_t     proc_pagetable(struct proc *);
+pagetable_t     proc_kpagetable(); 
 void            proc_freepagetable(pagetable_t, uint64);
-void            proc_freekpagetable(struct proc*);
+void            proc_freekpagetable(pagetable_t, uint64);
 int             kill(int);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
 void            procinit(void);
-void            kprocinit(struct proc*);
-void            kprocfree(struct proc*);
+void            kprocfree(pagetable_t kpagetable);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
 void            setproc(struct proc*);
@@ -162,8 +162,7 @@ int             uartgetc(void);
 
 // vm.c
 void            kvminit(void);
-void            kpvminit(struct proc*);
-void            kpvmfree(struct proc*);
+void            kpvmfree(pagetable_t kpagetable);
 void            kvminithart(void);
 void            kpvminithart(struct proc*);
 uint64          kvmpa(uint64);
@@ -174,16 +173,17 @@ pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 void            kuvminit(struct proc*, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64);
-uint64          kuvmalloc(struct proc*, uint64, uint64);
+uint64          kuvmalloc(pagetable_t,pagetable_t, uint64, uint64);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
-uint64          kuvmdealloc(struct proc*, uint64, uint64);
+uint64          kuvmdealloc(pagetable_t, pagetable_t, uint64, uint64);
 #ifdef SOL_COW
 #else
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
-int             kuvmcopy(struct proc*, pagetable_t, uint64);
+int             kuvmcopy(pagetable_t, struct proc*, uint64);
 #endif
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
+void            kuvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);

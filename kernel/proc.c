@@ -48,21 +48,20 @@ procinit(void)
 
 //! Initialize the proc table for per process kernel table at alloc time.
 void            
-kprocinit(struct proc* p){
+kprocinit(pagetable_t kpagetable){
   struct proc *ptraverse;
   for(ptraverse = proc; ptraverse < &proc[NPROC]; ptraverse++) {
-      kpvmmap(p, ptraverse->kstack, ptraverse->kstack_pa, PGSIZE, PTE_R | PTE_W);
+      mappages(kpagetable, ptraverse->kstack, PGSIZE, ptraverse->kstack_pa, PTE_R | PTE_W);
   }
 }
 
 //! Free the proc table for per process kernel table
 void            
-kprocfree(struct proc* p) {
+kprocfree(pagetable_t kpagetable) {
   struct proc *ptraverse;
-  pagetable_t kpagetable = p->kpagetable;
   for(ptraverse = proc; ptraverse < &proc[NPROC]; ptraverse++) {
       uint64 va = KSTACK((int) (ptraverse - proc));
-      uvmunmap(kpagetable, va, 1, 0);
+      kuvmunmap(kpagetable, va, 1, 0);
   }
 }
 
@@ -106,7 +105,8 @@ allocpid() {
 
   return pid;
 }
-
+extern void
+vmprint(pagetable_t pagetable);
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -115,7 +115,7 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-
+  // printf("%s called\n", __func__);
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
     if(p->state == UNUSED) {
@@ -137,10 +137,8 @@ found:
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
-  //! Init Per process kernel page table 
-  kpvminit(p);
-  //! Setup proc table for per process kernel table 
-  kprocinit(p);
+  //! alloc kpage table 
+  p->kpagetable = proc_kpagetable();
   
   if(p->pagetable == 0){
     freeproc(p);
@@ -169,7 +167,7 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   if(p->kpagetable)
-    proc_freekpagetable(p);
+    proc_freekpagetable(p->kpagetable, p->sz);
   p->pagetable = 0;
   p->kpagetable = 0;
   p->sz = 0;
@@ -228,14 +226,23 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 extern void 
 freewalk(pagetable_t);
 
+extern void
+vmprint(pagetable_t pagetable);
+
 void
-proc_freekpagetable(struct proc *p){
+proc_freekpagetable(pagetable_t kpagetable, uint64 sz){
   // pagetable_t kpagetable = p->kpagetable;
   // Free kernel memory pages,
   // then free kernel page table.
-  kpvmfree(p);
-  kprocfree(p);
-  freewalk(p->kpagetable);
+  // vmprint(kpagetable);
+  // printf("%s called\n", __func__);
+  //! Free Kernel Page table that for process mappings, 
+  //! make sure free process page table first
+
+  uvmunmap(kpagetable, 0, PGROUNDUP(sz) / PGSIZE, 0);
+  kpvmfree(kpagetable);
+  kprocfree(kpagetable);
+  freewalk(kpagetable);
 }
 
 // a user program that calls exec("/init")
@@ -258,12 +265,12 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  printf("%s called\n", __func__);
+  // printf("%s called\n", __func__);
   // allocate one user page and copy init's instructions
   // and data into it.
   //! Init not only for user page table but also kernel page table 
-  // kuvminit(p, initcode, sizeof(initcode));
-  uvminit(p->pagetable, initcode, sizeof(initcode));
+  kuvminit(p, initcode, sizeof(initcode));
+  // uvminit(p->pagetable, initcode, sizeof(initcode));
   
   p->sz = PGSIZE;
   // prepare for the very first "return" from kernel to user.
@@ -293,13 +300,15 @@ growproc(int n)
   }
 
   if(n > 0){
+    // printf("%s\n", __func__);
     //! alloc not only user page table, but also kernel page table
-    if((sz = kuvmalloc(p, sz, sz + n)) == 0) {
+    if((sz = kuvmalloc(p->kpagetable, p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
   } else if(n < 0){
     //! dealloc not only user page table, but also kernel page table
-    sz = kuvmdealloc(p, sz, sz + n);
+    sz = kuvmdealloc(p->kpagetable, p->pagetable, sz, sz + n);
+    // sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;
   return 0;
@@ -318,10 +327,10 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-  printf("%s called\n", __func__);
+  // printf("%s called\n", __func__);
   // Copy user memory from parent to child.
   //! Copy user memory from parent to child and also kernel page table
-  if(kuvmcopy(p, np->pagetable, p->sz) < 0){
+  if(kuvmcopy(p->pagetable, np, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
